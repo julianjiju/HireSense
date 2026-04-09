@@ -1,41 +1,131 @@
+/* ─── Google Font Import ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── CSS Variables ───────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
-
-    --primary: 262.1 83.3% 57.8%;
-    --primary-foreground: 210 40% 98%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --radius: 1rem;
+    --bg-void: #070A12;
+    --bg-card: rgba(15, 20, 36, 0.6);
+    --border-glass: rgba(255, 255, 255, 0.06);
+    --neon-cyan: #00F0FF;
+    --neon-blue: #3B82F6;
+    --neon-purple: #A855F7;
   }
-}
 
-@layer base {
   * {
-    @apply border-gray-200;
+    border-color: var(--border-glass);
   }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg-void);
+    color: #E2E8F0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Custom Scrollbar */
+/* ─── Glassmorphism ───────────────────────────────────────────────────────── */
+@layer components {
+  .glass {
+    background: rgba(15, 20, 36, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .glass-strong {
+    background: rgba(15, 20, 36, 0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-light {
+    background: rgba(30, 40, 70, 0.3);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  /* Neon borders */
+  .neon-border-cyan {
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.06), inset 0 0 15px rgba(0, 240, 255, 0.03);
+  }
+
+  .neon-border-blue {
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.08), inset 0 0 15px rgba(59, 130, 246, 0.03);
+  }
+
+  .neon-border-purple {
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.06), inset 0 0 15px rgba(168, 85, 247, 0.03);
+  }
+
+  /* Glow text */
+  .glow-cyan {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+  }
+
+  .glow-blue {
+    color: var(--neon-blue);
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  }
+
+  .glow-purple {
+    color: var(--neon-purple);
+    text-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+  }
+}
+
+/* ─── Animated gradient background ────────────────────────────────────────── */
+.bg-mesh {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, rgba(0, 240, 255, 0.04) 0%, transparent 50%),
+    #070A12;
+}
+
+/* ─── Custom Scrollbar (Dark) ─────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 100px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Score Ring Animations ───────────────────────────────────────────────── */
+@keyframes score-fill {
+  from { stroke-dashoffset: 283; }
+}
+
+.score-ring {
+  transition: stroke-dashoffset 1.5s ease-in-out;
+}
+
+/* ─── Shimmer loading effect ──────────────────────────────────────────────── */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.03) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
 }

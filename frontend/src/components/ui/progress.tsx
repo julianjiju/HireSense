@@ -7,16 +7,24 @@ interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
-  ({ className, value, indicatorColor = "bg-blue-600", ...props }, ref) => {
+  ({ className, value, indicatorColor, ...props }, ref) => {
+    const getAutoColor = (v: number) => {
+      if (v >= 80) return "bg-gradient-to-r from-emerald-500 to-green-400"
+      if (v >= 50) return "bg-gradient-to-r from-amber-500 to-yellow-400"
+      return "bg-gradient-to-r from-red-500 to-rose-400"
+    }
+
+    const color = indicatorColor || getAutoColor(value || 0)
+
     return (
       <div
         ref={ref}
-        className={cn("relative h-2 w-full overflow-hidden rounded-full bg-gray-100", className)}
+        className={cn("relative h-1.5 w-full overflow-hidden rounded-full bg-white/5", className)}
         {...props}
       >
         <div
-          className={cn("h-full w-full flex-1 transition-all duration-500 ease-in-out", indicatorColor)}
-          style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+          className={cn("h-full rounded-full transition-all duration-1000 ease-out", color)}
+          style={{ width: `${Math.min(value || 0, 100)}%` }}
         />
       </div>
     )
