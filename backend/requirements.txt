@@ -4,4 +4,8 @@ python-multipart
 python-dotenv
 google-genai
 PyMuPDF
+pdfplumber
+python-docx
+httpx
 pydantic
+tenacity

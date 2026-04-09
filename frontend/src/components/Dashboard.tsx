@@ -1,591 +1,375 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UploadCloud, Sparkles, BarChart3, AlertCircle, Brain,
   ChevronRight, Eye, X, Zap, Target, TrendingUp, Users, Shield,
-  Award, AlertTriangle, CheckCircle2, XCircle
+  Award, CheckCircle2, XCircle, Plus, Briefcase, LayoutDashboard
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000';
+const API_URL = '/api'; // Using relative path for Vercel deployment
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Candidate {
+interface Job {
   id: string;
-  candidate_name: string;
-  skills: string[];
-  seniority_level: string;
-  domain: string;
-  short_summary: string;
-  key_strengths: string[];
-  education: string;
-  years_of_experience: string;
-  projects: string[];
-  match_score: number;
-  skill_match_analysis: string;
-  experience_match_analysis: string;
-  missing_skills: string[];
-  strengths: string[];
-  reasoning: string;
-  recommendation: string;
-  resume_text: string;
+  title: string;
+  description: string;
+  created_at: string;
 }
 
-interface Analytics {
-  total_candidates: number;
-  average_score: number;
-  hiring_confidence: number;
-  top_skills: string[];
-  rare_skills: string[];
-  missing_skills: string[];
-  skill_coverage_score: number;
-}
-
-interface ParsedJD {
-  role: string;
-  required_skills: string[];
-  required_experience: string;
-  seniority_expectation: string;
-}
-
-// ─── Score Ring Component ────────────────────────────────────────────────────
-
-function ScoreRing({ score, size = 80, stroke = 6 }: { score: number; size?: number; stroke?: number }) {
-  const radius = (size - stroke) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (score / 100) * circumference;
-  const color = score >= 80 ? '#10B981' : score >= 50 ? '#F59E0B' : '#EF4444';
-
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
-          fill="none" stroke="rgba(255,255,255,0.05)" />
-        <circle cx={size / 2} cy={size / 2} r={radius} strokeWidth={stroke}
-          fill="none" stroke={color} strokeLinecap="round"
-          strokeDasharray={circumference} strokeDashoffset={offset}
-          className="score-ring" style={{ filter: `drop-shadow(0 0 6px ${color}50)` }} />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-lg font-bold text-slate-100">{score}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Recommendation Badge ────────────────────────────────────────────────────
-
-function RecBadge({ rec }: { rec: string }) {
-  const lower = rec.toLowerCase();
-  if (lower.includes('strong'))
-    return <Badge variant="success" className="gap-1"><CheckCircle2 className="w-3 h-3" />{rec}</Badge>;
-  if (lower.includes('hire'))
-    return <Badge variant="success" className="gap-1 opacity-80"><CheckCircle2 className="w-3 h-3" />{rec}</Badge>;
-  if (lower.includes('maybe'))
-    return <Badge variant="default" className="gap-1"><AlertTriangle className="w-3 h-3" />{rec}</Badge>;
-  return <Badge variant="destructive" className="gap-1"><XCircle className="w-3 h-3" />{rec}</Badge>;
+interface Candidate {
+  resume_id: string;
+  filename: string;
+  match: {
+    score: number;
+    justification: string;
+    source: string;
+    breakdown: {
+      experience: number;
+      skills: number;
+      semantic: number;
+      completeness: number;
+    };
+    strengths?: string[];
+    missing_skills?: string[];
+    recommendation?: string;
+  };
 }
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'analyze'>('upload');
-
-  const [files, setFiles] = useState<File[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'upload' | 'ranking'>('overview');
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [newJobTitle, setNewJobTitle] = useState('');
+  
+  const [files, setFiles] = useState<{file: File, status: 'queued' | 'parsing' | 'done' | 'failed'}[]>([]);
   const [jobDescription, setJobDescription] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [resumeIds, setResumeIds] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [error, setError] = useState('');
 
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [bestCandidate, setBestCandidate] = useState<Candidate | null>(null);
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [parsedJD, setParsedJD] = useState<ParsedJD | null>(null);
-  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
-
-  // Dropzone
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    setFiles(prev => [...prev, ...acceptedFiles]);
+  // 1. Fetch Jobs
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        const res = await axios.get(`${API_URL}/jobs`);
+        if (res.data.success) {
+          setJobs(res.data.jobs);
+        }
+      } catch (err: any) {
+        setError(err.response?.data?.detail || "Database connection failed. Ensure SUPABASE_URL and KEYS are set in .env");
+      }
+    };
+    fetchJobs();
   }, []);
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop, accept: { 'application/pdf': ['.pdf'] }
-  });
 
-  const handleUpload = async () => {
-    if (files.length === 0) return;
-    setIsUploading(true);
-    setError('');
-    const formData = new FormData();
-    files.forEach(f => formData.append('files', f));
+  // 2. Job Creation
+  const handleCreateJob = async () => {
+    if (!newJobTitle.trim()) return;
     try {
-      const res = await axios.post(`${API_URL}/upload`, formData);
-      const ids = res.data.resumes.map((r: any) => r.id);
-      setResumeIds(prev => [...prev, ...ids]);
-      setFiles([]);
-      setActiveTab('analyze');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Upload failed. Is the backend running?');
-    } finally {
-      setIsUploading(false);
+      const res = await axios.post(`${API_URL}/jobs`, { title: newJobTitle });
+      if (res.data.success) {
+        setJobs([res.data.job, ...jobs]);
+        setActiveJob(res.data.job);
+        setIsCreatingJob(false);
+        setNewJobTitle('');
+      }
+    } catch (err) {
+      setError("Failed to create job");
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!jobDescription.trim()) { setError('Job description is required.'); return; }
-    setIsAnalyzing(true);
-    setError('');
+  // 3. File Upload Tracking
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    setFiles(prev => [...prev, ...acceptedFiles.map(f => ({ file: f, status: 'queued' as const }))]);
+  }, []);
+  
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop, accept: { 
+      'application/pdf': ['.pdf'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png']
+    }
+  });
+
+  const uploadFiles = async () => {
+    if (!activeJob) return;
+    setIsProcessing(true);
+    
+    for (const fileItem of files) {
+      if (fileItem.status === 'done') continue;
+      
+      const idx = files.indexOf(fileItem);
+      const updateStatus = (status: any) => {
+        setFiles(prev => prev.map((item, i) => i === idx ? { ...item, status } : item));
+      };
+
+      updateStatus('parsing');
+      const formData = new FormData();
+      formData.append('file', fileItem.file);
+      formData.append('job_id', activeJob.id);
+
+      try {
+        await axios.post(`${API_URL}/upload`, formData);
+        updateStatus('done');
+      } catch (err) {
+        updateStatus('failed');
+      }
+    }
+    setIsProcessing(false);
+  };
+
+  const handleRank = async () => {
+    if (!activeJob || !jobDescription.trim()) return;
+    setIsProcessing(true);
     try {
       const res = await axios.post(`${API_URL}/rank`, {
-        job_description: jobDescription,
-        resume_ids: resumeIds,
+        job_id: activeJob.id,
+        job_description: jobDescription
       });
-      setCandidates(res.data.candidates || []);
-      setBestCandidate(res.data.best_candidate || null);
-      setAnalytics(res.data.analytics || null);
-      setParsedJD(res.data.parsed_jd || null);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Analysis failed.');
+      if (res.data.success) {
+        setCandidates(res.data.results);
+        setActiveTab('ranking');
+      }
+    } catch (err) {
+      setError("Ranking failed");
     } finally {
-      setIsAnalyzing(false);
+      setIsProcessing(false);
     }
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen bg-[#020617] text-slate-200 overflow-hidden font-sans">
       {/* ── Sidebar ─────────────────────────────────────────────── */}
-      <aside className="w-64 glass-strong flex flex-col hidden md:flex border-r border-white/5">
+      <aside className="w-72 bg-[#0b1120] border-r border-white/5 flex flex-col">
         <div className="p-6 border-b border-white/5 flex items-center gap-3">
-          <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-2 rounded-xl shadow-neon-cyan">
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-2 rounded-xl shadow-lg">
             <Brain className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-lg font-bold tracking-tight text-white">HireSense</h1>
-          <Badge variant="neon" className="text-[10px] ml-auto px-1.5 py-0">AI</Badge>
+          <h1 className="text-xl font-bold tracking-tight text-white">HireSense</h1>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
-          <button onClick={() => setActiveTab('upload')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 ${activeTab === 'upload' ? 'bg-white/10 text-cyan-300 font-medium neon-border-cyan' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}>
-            <UploadCloud className="w-4 h-4" /> Upload Resumes
-          </button>
-          <button onClick={() => setActiveTab('analyze')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 ${activeTab === 'analyze' ? 'bg-white/10 text-cyan-300 font-medium neon-border-cyan' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}>
-            <BarChart3 className="w-4 h-4" /> Analyze & Rank
-          </button>
-        </nav>
+        <div className="p-4 flex-1 overflow-y-auto space-y-6">
+          <nav className="space-y-1">
+            <button onClick={() => setActiveTab('overview')}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all ${activeTab === 'overview' ? 'bg-white/5 text-indigo-400 font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}>
+              <LayoutDashboard className="w-4 h-4" /> Dashboard Overview
+            </button>
+          </nav>
 
-        <div className="p-4 border-t border-white/5">
-          <div className="glass-light rounded-xl p-3 text-center">
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-1">Powered by</p>
-            <p className="text-xs font-semibold text-slate-300">Google Gemini AI</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-3">
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Job Roles</h3>
+              <button onClick={() => setIsCreatingJob(true)} className="text-indigo-400 hover:text-indigo-300">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-1">
+              {jobs.map(job => (
+                <button key={job.id} onClick={() => { setActiveJob(job); setActiveTab('overview'); }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 group transition-all ${activeJob?.id === job.id ? 'bg-indigo-500/10 text-indigo-300' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'}`}>
+                  <Briefcase className="w-3.5 h-3.5" />
+                  <span className="truncate flex-1">{job.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-white/5">
+          <div className="bg-white/[0.02] rounded-xl p-3 text-center border border-white/5">
+            <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1">Status</p>
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-medium text-slate-300">Production Ready</span>
+            </div>
           </div>
         </div>
       </aside>
 
-      {/* ── Main ────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col h-full overflow-y-auto">
-        {/* Header */}
-        <header className="glass-strong border-b border-white/5 px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div>
-            <h2 className="text-xl font-bold text-white">
-              {activeTab === 'upload' ? 'Upload Candidates' : 'AI Intelligence Dashboard'}
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {activeTab === 'upload' ? 'Add resumes for AI processing' : 'Gemini-powered candidate analysis'}
-            </p>
+      {/* ── Main Content ────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden">
+        <header className="h-16 border-b border-white/5 flex items-center justify-between px-8 shrink-0 bg-[#0b1120]/50 backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            {activeJob ? (
+              <>
+                <h2 className="text-lg font-bold text-white">{activeJob.title}</h2>
+                <Badge variant="outline" className="text-[10px] border-white/10 uppercase font-bold tracking-wider">Active Batch</Badge>
+              </>
+            ) : (
+              <h2 className="text-lg font-bold text-slate-400 italic">Select a Job Role to begin</h2>
+            )}
           </div>
-          {resumeIds.length > 0 && (
-            <Badge variant="outline" className="text-xs">{resumeIds.length} resumes in pool</Badge>
-          )}
+          
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => setActiveTab('upload')} disabled={!activeJob}>Upload</Button>
+            <Button variant="neon" size="sm" onClick={() => setActiveTab('ranking')} disabled={!activeJob}>Ranking</Button>
+          </div>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto w-full">
-          {/* Error */}
-          {error && (
-            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-              className="mb-6 glass rounded-xl p-4 border border-red-500/20 flex items-center gap-3">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <p className="text-sm text-red-300">{error}</p>
-            </motion.div>
-          )}
-
+        <div className="flex-1 overflow-y-auto p-8">
           <AnimatePresence mode="wait">
-            {/* ── UPLOAD TAB ──────────────────────────────────────── */}
-            {activeTab === 'upload' && (
-              <motion.div key="upload" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }} className="space-y-6">
-
-                <div {...getRootProps()}
-                  className={`glass rounded-3xl p-16 text-center transition-all duration-300 cursor-pointer group
-                    ${isDragActive ? 'neon-border-cyan scale-[1.01]' : 'border border-white/5 hover:border-white/10'}`}>
-                  <input {...getInputProps()} />
-                  <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 transition-all duration-300
-                    ${isDragActive ? 'bg-cyan-500/20 shadow-neon-cyan' : 'bg-white/5 group-hover:bg-white/10'}`}>
-                    <UploadCloud className={`w-10 h-10 transition-colors ${isDragActive ? 'text-cyan-400' : 'text-slate-500'}`} />
+            {!activeJob ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col items-center justify-center text-center">
+                <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mb-6">
+                  <Briefcase className="w-10 h-10 text-indigo-400" />
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-2">No Active Job Role</h3>
+                <p className="text-slate-500 max-w-sm mb-8">Create or select a job role from the sidebar to start uploading resumes and ranking talent.</p>
+                <Button variant="neon" onClick={() => setIsCreatingJob(true)}>Create First Job Role</Button>
+              </motion.div>
+            ) : activeTab === 'overview' ? (
+              <motion.div key="overview" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-6">
+                    <Users className="w-8 h-8 text-indigo-400 mb-4" />
+                    <h4 className="text-2xl font-bold text-white">{candidates.length}</h4>
+                    <p className="text-sm text-slate-400">Total Applicants Ranked</p>
                   </div>
-                  <h3 className="text-xl font-semibold text-white mb-2">Drop resumes here</h3>
-                  <p className="text-slate-500 text-sm mb-6">PDF files • AI will extract structured data from each resume</p>
-                  <Button variant="outline">Browse Files</Button>
+                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-6">
+                    <Award className="w-8 h-8 text-emerald-400 mb-4" />
+                    <h4 className="text-2xl font-bold text-white">
+                      {candidates.filter(c => c.match.score >= 80).length}
+                    </h4>
+                    <p className="text-sm text-slate-400">Top Potential Hires</p>
+                  </div>
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-6">
+                    <Sparkles className="w-8 h-8 text-amber-400 mb-4" />
+                    <h4 className="text-2xl font-bold text-white">
+                      {candidates.length > 0 ? (candidates.reduce((a,b) => a + b.match.score, 0) / candidates.length).toFixed(0) : 0}%
+                    </h4>
+                    <p className="text-sm text-slate-400">Avg Candidate Match</p>
+                  </div>
                 </div>
 
-                {files.length > 0 && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                    className="glass rounded-2xl p-6 border border-white/5">
-                    <h3 className="text-sm font-semibold text-slate-300 mb-4">Queued ({files.length})</h3>
-                    <ul className="space-y-2 mb-6">
-                      {files.map((f, i) => (
-                        <li key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                          <span className="text-sm text-slate-300 truncate">{f.name}</span>
-                          <span className="text-xs text-slate-600">{(f.size / 1024).toFixed(0)} KB</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="flex justify-end">
-                      <Button variant="neon" size="lg" onClick={handleUpload} disabled={isUploading}>
-                        {isUploading ? (
-                          <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />AI Processing...</>
-                        ) : (
-                          <><Sparkles className="w-4 h-4 mr-2" />Upload & Analyze</>
-                        )}
-                      </Button>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
-
-            {/* ── ANALYZE TAB ─────────────────────────────────────── */}
-            {activeTab === 'analyze' && (
-              <motion.div key="analyze" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }} className="space-y-8">
-
-                {/* JD Input */}
-                <div className="glass rounded-2xl overflow-hidden border border-white/5 focus-within:neon-border-blue transition-all duration-300">
-                  <div className="px-6 py-4 border-b border-white/5 flex items-center gap-2">
-                    <Target className="w-4 h-4 text-blue-400" />
-                    <h3 className="text-sm font-medium text-slate-300">Job Description</h3>
-                  </div>
-                  <textarea className="w-full h-28 p-6 bg-transparent resize-none focus:outline-none text-slate-200 placeholder-slate-600 text-sm"
-                    placeholder="Paste the full job description here — AI will parse role, skills, experience, and seniority requirements..."
-                    value={jobDescription} onChange={e => setJobDescription(e.target.value)} />
-                  <div className="px-6 py-4 border-t border-white/5 flex justify-between items-center">
-                    <p className="text-xs text-slate-600">Gemini will analyze each candidate as a senior recruiter</p>
-                    <Button variant="neon" onClick={handleAnalyze}
-                      disabled={isAnalyzing || !jobDescription.trim() || resumeIds.length === 0}>
-                      {isAnalyzing ? (
-                        <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />AI Analyzing...</>
-                      ) : (
-                        <><Brain className="w-4 h-4 mr-2" />Rank with AI</>
-                      )}
+                <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8">
+                  <h3 className="text-lg font-bold text-white mb-6">Job Description Analysis</h3>
+                  <textarea 
+                    className="w-full h-40 bg-transparent border border-white/10 rounded-2xl p-6 text-slate-300 focus:outline-none focus:border-indigo-500/50 transition-all text-sm leading-relaxed"
+                    placeholder="Describe the ideal candidate..."
+                    value={jobDescription}
+                    onChange={(e) => setJobDescription(e.target.value)}
+                  />
+                  <div className="flex justify-end mt-4">
+                    <Button variant="neon" size="lg" onClick={handleRank} disabled={isProcessing || !jobDescription.trim()}>
+                      {isProcessing ? "Processing AI..." : "Update AI Ranking"}
                     </Button>
                   </div>
                 </div>
+              </motion.div>
+            ) : activeTab === 'upload' ? (
+              <motion.div key="upload" className="space-y-6">
+                <div {...getRootProps()} className={`border-2 border-dashed rounded-3xl p-20 text-center transition-all cursor-pointer ${isDragActive ? 'border-indigo-500 bg-indigo-500/5' : 'border-white/10 hover:border-white/20'}`}>
+                  <input {...getInputProps()} />
+                  <UploadCloud className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-white">Drop Resumes Here</h3>
+                  <p className="text-slate-500 text-sm mt-1">PDF, DOCX, or Image (JPG, PNG)</p>
+                </div>
 
-                {/* ── Analytics Cards ──────────────────────────────── */}
-                {analytics && (
-                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                    className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                    {[
-                      { label: 'Candidates', value: analytics.total_candidates, icon: Users, color: 'text-blue-400' },
-                      { label: 'Avg Score', value: `${analytics.average_score}%`, icon: TrendingUp, color: 'text-cyan-400' },
-                      { label: 'Hire Confidence', value: `${analytics.hiring_confidence}%`, icon: Shield, color: 'text-purple-400' },
-                      { label: 'Skill Coverage', value: `${analytics.skill_coverage_score}%`, icon: Target, color: 'text-green-400' },
-                      { label: 'Role', value: parsedJD?.role || '—', icon: Zap, color: 'text-amber-400', wide: true },
-                    ].map((stat, i) => (
-                      <div key={i} className={`glass rounded-xl p-4 border border-white/5 hover:border-white/10 transition-all ${(stat as any).wide ? 'col-span-2 lg:col-span-1' : ''}`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <stat.icon className={`w-3.5 h-3.5 ${stat.color}`} />
-                          <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">{stat.label}</span>
-                        </div>
-                        <p className="text-lg font-bold text-white truncate">{stat.value}</p>
-                      </div>
-                    ))}
-                  </motion.div>
-                )}
-
-                {/* ── Best Candidate Hero ──────────────────────────── */}
-                {bestCandidate && (
-                  <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}
-                    className="relative rounded-3xl overflow-hidden">
-                    {/* Glow border effect */}
-                    <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-purple-500/20 animate-pulse-glow" />
-                    <div className="relative glass-strong rounded-3xl p-8 m-[1px] border border-cyan-500/10">
-                      <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-cyan-500/5 to-transparent rounded-bl-full" />
-
-                      <div className="flex items-center gap-2 mb-6">
-                        <Badge variant="neon" className="gap-1 animate-pulse-glow"><Award className="w-3 h-3" />BEST MATCH</Badge>
-                        <RecBadge rec={bestCandidate.recommendation} />
-                      </div>
-
-                      <div className="flex flex-col md:flex-row gap-8 items-start relative z-10">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-3xl font-extrabold text-white mb-1">{bestCandidate.candidate_name}</h3>
-                          <div className="flex items-center gap-2 mb-4 flex-wrap">
-                            <Badge variant="outline">{bestCandidate.seniority_level}</Badge>
-                            <Badge variant="outline">{bestCandidate.domain}</Badge>
-                            {bestCandidate.years_of_experience && <Badge variant="outline">{bestCandidate.years_of_experience}</Badge>}
-                          </div>
-                          <p className="text-sm text-slate-400 leading-relaxed mb-6 max-w-2xl">{bestCandidate.reasoning}</p>
-
-                          {/* Quick Insights */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-                            <div className="bg-white/[0.03] rounded-xl p-3 border border-white/5">
-                              <p className="text-[10px] text-slate-500 uppercase mb-1 font-semibold">Top Strengths</p>
-                              <p className="text-xs text-slate-300">{bestCandidate.strengths.slice(0, 2).join(' • ')}</p>
-                            </div>
-                            <div className="bg-white/[0.03] rounded-xl p-3 border border-white/5">
-                              <p className="text-[10px] text-slate-500 uppercase mb-1 font-semibold">Skill Fit</p>
-                              <p className="text-xs text-slate-300">{bestCandidate.skill_match_analysis.slice(0, 80)}…</p>
-                            </div>
-                            <div className="bg-white/[0.03] rounded-xl p-3 border border-white/5">
-                              <p className="text-[10px] text-slate-500 uppercase mb-1 font-semibold">Experience</p>
-                              <p className="text-xs text-slate-300">{bestCandidate.experience_match_analysis.slice(0, 80)}…</p>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5">
-                            {bestCandidate.skills.slice(0, 8).map(s => (
-                              <span key={s} className="px-2.5 py-1 text-xs rounded-lg bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">{s}</span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Score Section */}
-                        <div className="flex flex-col items-center gap-4 shrink-0">
-                          <ScoreRing score={bestCandidate.match_score} size={120} stroke={8} />
-                          <Button variant="neon" size="sm" onClick={() => setSelectedCandidate(bestCandidate)}>
-                            <Eye className="w-3 h-3 mr-1.5" />Deep Dive
-                          </Button>
-                        </div>
-                      </div>
+                {files.length > 0 && (
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <h4 className="text-sm font-bold uppercase tracking-widest text-slate-400">Queue ({files.length})</h4>
+                      <Button variant="neon" size="sm" onClick={uploadFiles} disabled={isProcessing}>Process Batch</Button>
                     </div>
-                  </motion.div>
-                )}
-
-                {/* ── Candidate List ──────────────────────────────── */}
-                {candidates.length > 1 && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">All Candidates</h3>
-                    {candidates.slice(1).map((c, idx) => (
-                      <motion.div key={c.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 + idx * 0.05 }}
-                        className="glass rounded-2xl p-5 border border-white/5 hover:border-white/10 hover:shadow-glass transition-all duration-300 group">
-                        <div className="flex flex-col lg:flex-row gap-5">
-                          {/* Left */}
-                          <div className="flex items-start gap-4 flex-1 min-w-0">
-                            <ScoreRing score={c.match_score} size={56} stroke={4} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <h4 className="text-base font-bold text-white">{c.candidate_name}</h4>
-                                <RecBadge rec={c.recommendation} />
-                              </div>
-                              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                                <Badge variant="secondary" className="text-[10px]">{c.seniority_level}</Badge>
-                                <Badge variant="secondary" className="text-[10px]">{c.domain}</Badge>
-                              </div>
-                              <p className="text-xs text-slate-500 line-clamp-2 mb-3">{c.short_summary}</p>
-
-                              {/* At a glance */}
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-3">
-                                <span><span className="text-emerald-400">▲</span> {c.strengths[0] || '—'}</span>
-                                {c.missing_skills[0] && <span><span className="text-red-400">▼</span> Missing: {c.missing_skills[0]}</span>}
-                              </div>
-
-                              <Button variant="ghost" size="sm" onClick={() => setSelectedCandidate(c)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Eye className="w-3 h-3 mr-1.5" />View Profile
-                              </Button>
-                            </div>
-                          </div>
-
-                          {/* Right — Score Bars */}
-                          <div className="w-full lg:w-56 shrink-0 space-y-2.5 bg-white/[0.02] rounded-xl p-4 border border-white/5">
-                            {[
-                              { label: 'AI Match', value: c.match_score },
-                              { label: 'Skill Fit', value: Math.min(100, Math.round((1 - c.missing_skills.length / Math.max(parsedJD?.required_skills?.length || 1, 1)) * 100)) },
-                            ].map((bar, i) => (
-                              <div key={i}>
-                                <div className="flex justify-between text-[10px] font-semibold mb-1">
-                                  <span className="text-slate-500">{bar.label}</span>
-                                  <span className="text-slate-400">{bar.value}%</span>
-                                </div>
-                                <Progress value={bar.value} className="h-1" />
-                              </div>
-                            ))}
+                    <div className="space-y-2">
+                      {files.map((fileItem, i) => (
+                        <div key={i} className="flex items-center justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+                          <span className="text-sm truncate w-64">{fileItem.file.name}</span>
+                          <div className="flex items-center gap-3">
+                             {fileItem.status === 'parsing' && <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+                             <Badge variant={fileItem.status === 'done' ? 'success' : fileItem.status === 'failed' ? 'destructive' : 'outline'} className="text-[10px] uppercase">
+                               {fileItem.status}
+                             </Badge>
                           </div>
                         </div>
-                      </motion.div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
+              </motion.div>
+            ) : (
+              <motion.div key="ranking" className="space-y-6 pb-20">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-extrabold text-white">Candidate Rankings</h3>
+                  <span className="text-xs text-slate-500">Sorted by AI Score</span>
+                </div>
 
-                {/* ── Skill Intelligence ──────────────────────────── */}
-                {analytics && (analytics.top_skills.length > 0 || analytics.missing_skills.length > 0) && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-                    className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="glass rounded-xl p-5 border border-white/5">
-                      <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3 flex items-center gap-1.5">
-                        <TrendingUp className="w-3 h-3 text-cyan-400" /> Top Skills in Pool
-                      </h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {analytics.top_skills.slice(0, 10).map(s => (
-                          <span key={s} className="px-2 py-1 text-[11px] rounded-md bg-cyan-500/10 text-cyan-300 border border-cyan-500/15">{s}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="glass rounded-xl p-5 border border-white/5">
-                      <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3 flex items-center gap-1.5">
-                        <Sparkles className="w-3 h-3 text-purple-400" /> Rare Skills (High Value)
-                      </h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {analytics.rare_skills.length > 0 ? analytics.rare_skills.slice(0, 8).map(s => (
-                          <span key={s} className="px-2 py-1 text-[11px] rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/15">{s}</span>
-                        )) : <span className="text-xs text-slate-600">No rare skills detected</span>}
-                      </div>
-                    </div>
-                    <div className="glass rounded-xl p-5 border border-white/5">
-                      <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3 flex items-center gap-1.5">
-                        <AlertTriangle className="w-3 h-3 text-amber-400" /> Common Gaps
-                      </h4>
-                      <div className="flex flex-wrap gap-1.5">
-                        {analytics.missing_skills.length > 0 ? analytics.missing_skills.slice(0, 8).map(s => (
-                          <span key={s} className="px-2 py-1 text-[11px] rounded-md bg-red-500/10 text-red-300 border border-red-500/15">{s}</span>
-                        )) : <span className="text-xs text-slate-600">No major gaps</span>}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
+                <div className="bg-white/[0.02] border border-white/5 rounded-3xl overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-white/[0.03] text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                        <th className="px-6 py-4">Candidate</th>
+                        <th className="px-6 py-4">Score</th>
+                        <th className="px-6 py-4">AI Justification</th>
+                        <th className="px-6 py-4">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {candidates.map(c => (
+                        <tr key={c.resume_id} className="hover:bg-white/[0.01] group transition-all">
+                          <td className="px-6 py-5">
+                            <span className="text-sm font-bold text-indigo-300">{c.filename.split('.')[0]}</span>
+                          </td>
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-3">
+                              <span className={`text-lg font-black ${c.match.score >= 80 ? 'text-emerald-400' : c.match.score >= 50 ? 'text-amber-400' : 'text-slate-400'}`}>
+                                {c.match.score}
+                              </span>
+                              <div className="w-16 h-1 bg-white/5 rounded-full overflow-hidden shrink-0">
+                                <div className="h-full bg-indigo-500" style={{ width: `${c.match.score}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 max-w-md">
+                            <p className="text-xs text-slate-400 leading-relaxed italic">{c.match.justification}</p>
+                          </td>
+                          <td className="px-6 py-5">
+                            <Badge variant={c.match.source === 'gemini' ? 'neon' : 'outline'} className="text-[9px]">
+                              {c.match.source}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </main>
 
-      {/* ── Slide-in Resume Panel ──────────────────────────────── */}
+      {/* Modal for Creating Job */}
       <AnimatePresence>
-        {selectedCandidate && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={() => setSelectedCandidate(null)} />
-            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-              className="fixed top-0 right-0 h-full w-full max-w-2xl glass-strong z-50 shadow-2xl flex flex-col border-l border-white/5">
-
-              {/* Panel Header */}
-              <div className="p-6 border-b border-white/5 flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <ScoreRing score={selectedCandidate.match_score} size={64} stroke={5} />
-                  <div>
-                    <h2 className="text-xl font-bold text-white">{selectedCandidate.candidate_name}</h2>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <RecBadge rec={selectedCandidate.recommendation} />
-                      <Badge variant="outline" className="text-[10px]">{selectedCandidate.seniority_level}</Badge>
-                      <Badge variant="outline" className="text-[10px]">{selectedCandidate.domain}</Badge>
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedCandidate(null)}
-                  className="p-2 rounded-xl hover:bg-white/5 text-slate-500 hover:text-white transition-all">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Panel Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* AI Reasoning */}
-                <section className="glass-light rounded-xl p-5 neon-border-cyan">
-                  <h4 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Brain className="w-3.5 h-3.5" /> AI Recruiter Analysis
-                  </h4>
-                  <p className="text-sm text-slate-300 leading-relaxed">{selectedCandidate.reasoning}</p>
-                </section>
-
-                {/* Skills & Experience */}
-                <div className="grid grid-cols-2 gap-4">
-                  <section>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Skill Analysis</h4>
-                    <p className="text-xs text-slate-400 leading-relaxed">{selectedCandidate.skill_match_analysis}</p>
-                  </section>
-                  <section>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Experience Analysis</h4>
-                    <p className="text-xs text-slate-400 leading-relaxed">{selectedCandidate.experience_match_analysis}</p>
-                  </section>
-                </div>
-
-                {/* Strengths */}
-                <section>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Key Strengths</h4>
-                  <div className="space-y-1.5">
-                    {selectedCandidate.strengths.map((s, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-slate-300">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />{s}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                {/* Skills */}
-                <section>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Technical Skills</h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedCandidate.skills.map(s => (
-                      <span key={s} className="px-2 py-1 text-[11px] rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/15">{s}</span>
-                    ))}
-                  </div>
-                </section>
-
-                {/* Missing Skills */}
-                {selectedCandidate.missing_skills.length > 0 && (
-                  <section>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Missing Skills</h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedCandidate.missing_skills.map(s => (
-                        <span key={s} className="px-2 py-1 text-[11px] rounded-md bg-red-500/10 text-red-300 border border-red-500/15">{s}</span>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {/* Projects */}
-                {selectedCandidate.projects.length > 0 && (
-                  <section>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Projects</h4>
-                    <ul className="space-y-1.5">
-                      {selectedCandidate.projects.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-slate-400">
-                          <ChevronRight className="w-3 h-3 text-purple-400 mt-0.5 shrink-0" />{p}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-
-                {/* Education */}
-                <section>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase mb-3">Education</h4>
-                  <p className="text-xs text-slate-400">{selectedCandidate.education || 'Not specified'}</p>
-                </section>
-
-                {/* Raw Resume */}
-                <details className="group">
-                  <summary className="text-xs font-semibold text-slate-500 uppercase cursor-pointer hover:text-slate-400 transition-colors flex items-center gap-1">
-                    <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
-                    Raw Resume Text
-                  </summary>
-                  <div className="mt-3 bg-black/30 rounded-xl p-4 border border-white/5 max-h-96 overflow-y-auto">
-                    <pre className="text-[11px] text-slate-500 whitespace-pre-wrap font-mono leading-relaxed">
-                      {selectedCandidate.resume_text}
-                    </pre>
-                  </div>
-                </details>
+        {isCreatingJob && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-xl bg-black/40">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-[#0b1120] border border-white/10 rounded-[32px] p-8 w-full max-w-md shadow-2xl">
+              <h3 className="text-xl font-bold text-white mb-6">Create New Job Role</h3>
+              <input 
+                autoFocus
+                className="w-full bg-[#020617] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 mb-6"
+                placeholder="Job Title (e.g. Senior Frontend Dev)"
+                value={newJobTitle}
+                onChange={(e) => setNewJobTitle(e.target.value)}
+              />
+              <div className="flex gap-3">
+                <Button variant="ghost" className="flex-1" onClick={() => setIsCreatingJob(false)}>Cancel</Button>
+                <Button variant="neon" className="flex-1" onClick={handleCreateJob}>Create Job</Button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </div>

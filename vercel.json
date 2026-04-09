@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/backend/api/$1.py" }
+  ],
+  "functions": {
+    "backend/api/*.py": {
+      "runtime": "vercel-python@3.9.0"
+    }
+  }
+}
