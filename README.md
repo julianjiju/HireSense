@@ -122,13 +122,22 @@ Frontend will be available at:
 
 ## 🎥 Demo
 
-👉 *(Add your Loom / video link here)*
+👉 https://drive.google.com/drive/folders/18GOKgWAaU4QxPTC3P3PcmDbjAlNTgSDd?usp=drive_link 
 
 ---
 
 ## 📸 Screenshots
 
-👉 *(Add UI screenshots here – very important for evaluation)*
+<img width="1918" height="1078" alt="image" src="https://github.com/user-attachments/assets/3e8d6f70-93a1-4a26-bd14-dcae4ebe6a15" />
+<img width="1918" height="1078" alt="image" src="https://github.com/user-attachments/assets/c3e47b3e-8dfe-4c39-8623-e8bdd06fbe4f" />
+<img width="1917" height="1078" alt="image" src="https://github.com/user-attachments/assets/cfa0a62f-561a-4371-a74c-cff1ab3e9d40" />
+<img width="1917" height="1078" alt="image" src="https://github.com/user-attachments/assets/764a815e-9067-4bfa-884c-71387f309d94" />
+<img width="1917" height="1078" alt="image" src="https://github.com/user-attachments/assets/f3bcee49-a647-49e8-8e6d-6e968c73f536" />
+<img width="1918" height="1078" alt="image" src="https://github.com/user-attachments/assets/3cc6ca9d-6331-4ca0-87b2-2c3dda0ef509" />
+
+
+
+
 
 ---
 
