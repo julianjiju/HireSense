@@ -122,7 +122,7 @@ Frontend will be available at:
 
 ## 🎥 Demo
 
-👉 *(Add your Loom / video link here)*
+👉 *(https://drive.google.com/drive/folders/18GOKgWAaU4QxPTC3P3PcmDbjAlNTgSDd?usp=drive_link)*
 
 ---
 
