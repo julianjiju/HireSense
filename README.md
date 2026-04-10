@@ -41,122 +41,108 @@ Unlike traditional ATS systems, HireSense leverages **LLM-based reasoning (Gemin
 
 ---
 
-## 🏗️ Tech Stack
+## 🏗️ Overall Architecture
 
-| Layer        | Technology |
-|-------------|-----------|
-| Frontend     | React, TypeScript, Vite |
-| Backend      | FastAPI / Python |
-| AI Engine    | Gemini API (Google) |
-| Database     | SQLite + SQLAlchemy |
-| OCR          | Tesseract |
+Frontend (React)  
+↓  
+Backend API (FastAPI)  
+↓  
+AI Engine (Semantic + Gemini)  
+↓  
+Database (SQLite)  
 
----
-
-## ⚙️ Local Setup Guide
-
-### 🔹 Prerequisites
-- Python 3.9+
-- Node.js 16+
-- Tesseract OCR
-
-Install Tesseract (Linux):
-```bash
-sudo apt install tesseract-ocr
-```
+### Flow:
+1. Upload resumes and enter Job Description  
+2. Backend parses documents (PDF, DOCX, OCR)  
+3. AI performs semantic matching, skill extraction, and scoring  
+4. Results stored in database  
+5. Frontend displays ranked candidates with insights  
 
 ---
 
-### 🔹 Backend Setup
+## 👤 User Requirements
 
-```bash
-cd backend
-pip install -r requirements.txt
-```
+- Screen large volumes of resumes quickly  
+- Identify best-fit candidates automatically  
+- Understand AI reasoning behind decisions  
+- Support multiple resume formats  
+- Reduce manual effort and bias  
 
-Create a `.env` file:
+---
+
+## 🎨 System Design
+
+### Design Principles
+- **Resilience** → Works even if AI fails  
+- **Explainability** → Transparent decision-making  
+- **Modularity** → Easy to extend  
+
+### Core Components
+- Resume Parser  
+- NLP Engine  
+- AI Reasoning Layer  
+- Ranking Engine  
+- Frontend Dashboard  
+
+---
+
+## ⚙️ Software Design
+
+### 🔹 API Layer
+- `POST /upload` → Upload & parse resumes  
+- `POST /rank` → Rank candidates  
+
+### 🔹 Service Layer
+- Resume parsing (PDF, DOCX, OCR)  
+- NLP processing (semantic similarity + skill extraction)  
+- Scoring engine (hybrid logic)  
+- AI integration (Gemini fallback chain)  
+
+### 🔹 Frontend Layer
+- Dashboard UI  
+- Candidate ranking view  
+- Resume preview panel  
+- Analytics display  
+
+---
+
+## 🧪 Test Cases
+
+### Functional Tests
+- Upload valid resumes → Parsed correctly  
+- Upload image resumes → OCR extracts text  
+- Submit job description → Returns ranked candidates  
+- Invalid input → Handled gracefully  
+
+### Edge Cases
+- Empty resumes  
+- Poorly formatted PDFs  
+- No matching skills  
+- AI failure → fallback triggers  
+
+---
+
+## 🧪 Unit Testing
+
+### Backend
+- Resume parsing  
+- Skill extraction  
+- Scoring logic  
+- API endpoints  
+
+### Frontend
+- UI rendering  
+- Component interactions  
+- API integration  
+
+Tools:
+- pytest  
+- React Testing Library  
+
+---
+
+## ⚙️ Configuration
+
 ```env
 GEMINI_API_KEY=your_api_key_here
-```
-
-Run the backend:
-```bash
-uvicorn app:app --reload --host 0.0.0.0 --port 8000
-```
-
----
-
-### 🔹 Frontend Setup
-
-```bash
-cd frontend
-npm install
-```
-
-(Optional)
-```bash
-cp .env.example .env
-```
-
-Run the frontend:
-```bash
-npm run dev
-```
-
-Frontend will be available at:
-👉 http://localhost:5173
-
----
-
-## 🧪 How It Works
-
-1. Upload resumes (PDF, DOCX, or Images)
-2. Enter job description
-3. AI processes candidates using semantic matching
-4. System outputs:
-   - 📊 Fit Score
-   - 🧠 AI Reasoning
-   - 🏆 Ranked Candidates
-
----
-
-## 🎥 Demo
-
-👉 *(https://drive.google.com/drive/folders/18GOKgWAaU4QxPTC3P3PcmDbjAlNTgSDd?usp=drive_link)*
-
----
-
-## 📸 Screenshots
-
-<img width="1918" height="1078" alt="image" src="https://github.com/user-attachments/assets/29e1094e-da95-4c54-ab86-a6d68ded1eda" />
-<img width="1918" height="1078" alt="image" src="https://github.com/user-attachments/assets/a525a124-cd61-46ae-ae7d-66581f5f75eb" />
-<img width="1918" height="1056" alt="image" src="https://github.com/user-attachments/assets/cfe27a09-427b-47b9-a7a9-0263cb9222da" />
-<img width="1917" height="963" alt="image" src="https://github.com/user-attachments/assets/c9cb1ad3-7aa2-44f2-9c84-cda2a5037742" />
-<img width="1917" height="1075" alt="image" src="https://github.com/user-attachments/assets/d4defd45-6e12-4694-8cdf-8abc489223dd" />
-<img width="1918" height="1017" alt="image" src="https://github.com/user-attachments/assets/4b72ad2c-e1bc-4447-aa5e-aeb43cfd5c13" />
-
-
-
----
-
-## 🚀 Unique Highlights
-
-- ❌ Not keyword-based → ✅ **Semantic AI matching**
-- ❌ Black-box scoring → ✅ **Explainable AI reasoning**
-- ❌ Static ranking → ✅ **Dynamic AI evaluation**
-
----
-
-## 🔮 Future Improvements
-
-- Multi-job comparison dashboard
-- Bias detection in hiring decisions
-- Interview question generation
-- Integration with real ATS platforms
-- Cloud deployment & scalability
-
----
-
-## 👨‍💻 Author
-
-**Julian Jiju**
+DATABASE_URL=sqlite:///hiresense.db
