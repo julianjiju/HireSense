@@ -1,4 +1,4 @@
-<img width="1918" height="1056" alt="image" src="https://github.com/user-attachments/assets/0545c66f-c3b9-46a9-9d54-3b8d733411ef" /># 🚀 HireSense – AI-Powered Semantic Hiring Platform
+# 🚀 HireSense – AI-Powered Semantic Hiring Platform
 
 HireSense is a **next-generation AI Applicant Tracking System (ATS)** that uses **semantic understanding (not just keywords)** to evaluate and rank candidates against job descriptions.
 
