@@ -71,6 +71,8 @@ def _fallback_score(resume_text: str, jd_text: str) -> dict:
         "source": "fallback",
         "reasoning": f"Rule-based assessment. Experience Match: {exp_score}/40. Skill Overlap: {skill_score}/30. Content Similarity: {semantic_score}/20.",
         "justification": f"Fallback Engine: Matches {len(res_skills & jd_skills)} target skills. Extracted {resume_years} years of relevant experience.",
+        "missing_skills": list(jd_skills - res_skills),
+        "recommendation": "Strong Hire" if total >= 80 else "Maybe" if total >= 50 else "Reject",
         "breakdown": {
             "experience": round(exp_score, 1),
             "skills": round(skill_score, 1),
@@ -111,12 +113,16 @@ async def _call_gemini_raw(prompt: str) -> dict:
 async def match_candidate(resume_text: str, jd_text: str) -> dict:
     """Master matching function with 3-tier reliability."""
     
-    # 0. Check Cache
-    hash_key = hashlib.md5(f"{resume_text[:2000]}-{jd_text[:2000]}".encode()).hexdigest()
-    cached = await check_cache(hash_key)
-    if cached:
-        logger.info("Cache hit for match results")
-        return cached
+    # 0. Check Cache (Safely)
+    try:
+        hash_key = hashlib.md5(f"{resume_text[:2000]}-{jd_text[:2000]}".encode()).hexdigest()
+        cached = await check_cache(hash_key)
+        if cached:
+            logger.info("Cache hit for match results")
+            return cached
+    except Exception as e:
+        logger.warning(f"Cache check failed (skipping): {e}")
+        hash_key = None
     
     prompt = f"""Evaluate this resume against the following job description.
     
@@ -150,7 +156,13 @@ async def match_candidate(resume_text: str, jd_text: str) -> dict:
         logger.warning(f"Tier 1/2 failed: {e}. Moving to Fallback Engine.")
         result = _fallback_score(resume_text, jd_text)
     
-    await set_cache(hash_key, result)
+    # Save to Cache (Safely)
+    if hash_key:
+        try:
+            await set_cache(hash_key, result)
+        except Exception as e:
+            logger.warning(f"Cache set failed: {e}")
+            
     return result
 
 async def extract_profile(resume_text: str) -> dict:

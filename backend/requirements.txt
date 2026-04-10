@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 anthropic
+google-generativeai
 pdfplumber
 python-docx
 pytesseract
@@ -9,3 +10,6 @@ sqlalchemy
 python-dotenv
 python-multipart
 httpx
+google-genai
+pymupdf
+tenacity

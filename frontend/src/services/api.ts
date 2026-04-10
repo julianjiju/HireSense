@@ -1,8 +1,18 @@
 import axios from 'axios';
 
-const BASE_URL = "http://localhost:8000/api";
+/** Absolute URLs must include `/api` (e.g. http://localhost:8000/api). We append `/api` if missing. */
+function normalizeApiBase(): string {
+  const raw = (import.meta.env.VITE_API_BASE_URL ?? '/api').trim().replace(/\/+$/, '');
+  if (!raw) return '/api';
+  if (/^https?:\/\//i.test(raw)) {
+    return raw.toLowerCase().endsWith('/api') ? raw : `${raw}/api`;
+  }
+  return raw.startsWith('/') ? raw : `/${raw}`;
+}
 
-import type { JobRole, UploadResult, RankingResult, Candidate } from './types';
+const BASE_URL = normalizeApiBase();
+
+import type { JobRole, UploadResult, RankingResult, ResumeListItem, ResumePreview } from './types';
 
 export const api = {
   getJobRoles: async (): Promise<JobRole[]> => {
@@ -19,11 +29,24 @@ export const api = {
     await axios.delete(`${BASE_URL}/job-roles/${id}`);
   },
 
-  uploadResumes: async (jobRoleId: string, files: File[]): Promise<UploadResult[]> => {
+  uploadResumes: async (jobRoleId: string, files: File[], batchLabel?: string): Promise<UploadResult[]> => {
     const formData = new FormData();
+    if (batchLabel?.trim()) formData.append('batch_label', batchLabel.trim());
     files.forEach(file => formData.append('files', file));
     const res = await axios.post(`${BASE_URL}/job-roles/${jobRoleId}/resumes`, formData);
     return res.data.results;
+  },
+
+  listResumes: async (jobRoleId: string): Promise<ResumeListItem[]> => {
+    const res = await axios.get(`${BASE_URL}/job-roles/${jobRoleId}/resumes`);
+    return res.data;
+  },
+
+  getResumePreview: async (jobRoleId: string, resumeId: string): Promise<ResumePreview> => {
+    const jid = encodeURIComponent(jobRoleId);
+    const rid = encodeURIComponent(resumeId);
+    const res = await axios.get(`${BASE_URL}/job-roles/${jid}/resumes/${rid}`);
+    return res.data;
   },
 
   rankCandidates: async (jobRoleId: string): Promise<RankingResult> => {
@@ -33,6 +56,11 @@ export const api = {
 
   getRankings: async (jobRoleId: string): Promise<RankingResult> => {
     const res = await axios.get(`${BASE_URL}/job-roles/${jobRoleId}/rankings`);
+    return res.data;
+  },
+
+  openResumeNative: async (resumeId: string): Promise<{ status: string; message: string }> => {
+    const res = await axios.post(`${BASE_URL}/resumes/${resumeId}/open-native`);
     return res.data;
   }
 };
